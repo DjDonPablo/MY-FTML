@@ -1,5 +1,4 @@
 import numpy as np
-
 from constants import SIGMA
 
 
@@ -7,8 +6,6 @@ def generate_output_data(
     X: np.ndarray, theta_star: np.ndarray, sigma: float, rng, n_tests: int
 ) -> np.ndarray:
     """
-    (Exact same function as in tp 2 dedicated to OLS)
-
     generate input and output data (supervised learning)
     according to the linear model, fixed design setup
     - X is fixed
@@ -38,35 +35,52 @@ def generate_output_data(
     return y
 
 
-def OLS_estimator(X: np.ndarray, y: np.ndarray) -> np.ndarray:
+def generate_low_rank_design_matrix(n: int, d: int, rng) -> np.ndarray:
     """
-    Compute OLS estimators from the data.
+    Generate a design matrix with low rank to illustrate the advantage of
+    Ridge regression.
+    """
+    sigma_design = 1e-5
+    X = rng.uniform(0, 1, size=(n, d - 1))
+    X_last_column = X[:, -1].reshape(n, 1)
+    noise = np.random.normal(0, sigma_design, size=(X_last_column.shape))
+    X_added_column = X_last_column + noise
+    X = np.hstack((X, X_added_column))
+    return X
 
-    We use numpy broadcasting to accelerate computations
-    and obtain several OLS estimators.
+
+def ridge_regression_estimator(
+    X: np.ndarray, y: np.ndarray, lambda_: float
+) -> np.ndarray:
+    """
+    Compute the Ridge regression estimators from the data.
 
     Parameters:
         X: (n, d) matrix
         y: (n, n_tests) matrix
+        lambda: regularization parameter
 
     We use numpy broadcasting to accelerate computations
-    and actually obtain several OLS estimators (one for each column of y)
+    and actually obtain several Ridge estimators (one for each column of y).
 
     This allows to statistically average the test errors obtained,
-    ans estimator the expected value of the test error of the OLS estimator.
+    ans estimator the expected value of the test error of the Ridge
+    regression estimator.
 
     Returns:
-        theta_hat: (d, n_tests) matrix, one column is one OLS estimator.
+        theta_hat: (d, n_tests) matrix, one column is one Ridge estimator.
     """
+    n, d = X.shape
     covariance_matrix = X.T @ X
-    inverse_covariance = np.linalg.inv(covariance_matrix)
-    theta_hat = inverse_covariance @ (X.T @ y)
+    Sigma_matrix = covariance_matrix / n
+    theta_hat = 1 / n * np.linalg.inv(Sigma_matrix + lambda_ * np.identity(d)) @ X.T @ y
     return theta_hat
 
 
-def ols_risk(n, d, n_tests) -> tuple[float, float]:
+def ridge_risk(n, d, lambda_, n_tests) -> float:
     """
-    Statistical evaluation of the excess risk of the OLS estimator.
+    Statistical evaluation of the excess risk of the Ridge regression
+    estimator
 
     n_test times, do:
         - Draw output vector Y, according to the linear model, fixed
@@ -88,11 +102,7 @@ def ols_risk(n, d, n_tests) -> tuple[float, float]:
     rng = np.random.default_rng()
 
     # design matrix
-    X = rng.uniform(low=0, high=1, size=(n, d))
-
-    # Different design matrix
-    # X = np.load("data/design_matrix.npy")
-    # n, d = X.shape
+    X = generate_low_rank_design_matrix(n=n, d=d, rng=rng)
 
     # Bayes predictor
     theta_star = rng.uniform(low=0, high=1, size=(d, 1))
@@ -108,15 +118,13 @@ def ols_risk(n, d, n_tests) -> tuple[float, float]:
         n_tests=n_tests,
     )
 
-    # compute the OLS estimator
-    theta_hat = OLS_estimator(X=X, y=y_train)
-
-    # compute the OLS regression estimators
+    # compute the Ridge regression estimators
     # there will be one different estimator per
     # output vector y
-    theta_hat = OLS_estimator(
+    theta_hat = ridge_regression_estimator(
         X=X,
         y=y_train,
+        lambda_=lambda_,
     )
 
     # generate test data
@@ -129,17 +137,9 @@ def ols_risk(n, d, n_tests) -> tuple[float, float]:
         n_tests=n_tests,
     )
 
-    # compute predictions of each OLS estimator
+    # compute predictions of each Ridge estimator
     y_pred = X @ theta_hat
 
     mean_test_error = np.linalg.norm(y_pred - y_test) ** 2 / (n * n_tests)
 
     return mean_test_error
-
-    """
-    Optional: study the variance of the relative distance
-    of OLS to the bayes estimator
-    """
-    # distances = np.linalg.norm(theta_hat - theta_star, axis=0)
-    # relative_distances = distances / np.linalg.norm(theta_star)
-    # std_relative_distance = relative_distances.std()
